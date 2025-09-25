@@ -32,23 +32,28 @@ class ZKTecoEmployeeService
                                    $punchCodeId = $user['userid']; // Use 'userid' field (punch code) instead of 'uid' (device ID)
                                    $name = $user['name'] ?? "Employee {$punchCodeId}";
                             
-                            // Check if employee already exists
-                            $existingEmployee = Employee::where('punch_code_id', $punchCodeId)->first();
+                            // Check if employee already exists for this specific device type
+                            $existingEmployee = Employee::where('punch_code_id', $punchCodeId)
+                                ->where('device_type', $deviceType)
+                                ->first();
                             
                             if (!$existingEmployee) {
                                 Employee::create([
                                     'punch_code_id' => $punchCodeId,
                                     'name' => $name,
-                                    'is_active' => true
+                                    'is_active' => true,
+                                    'device_type' => $deviceType,
+                                    'device_ip' => $device['ip']
                                 ]);
                                 $savedCount++;
-                                Log::info("Created new employee: {$name} (ID: {$punchCodeId})");
+                                Log::info("Created new employee: {$name} (ID: {$punchCodeId}) from {$deviceType} device");
                             } else {
                                 // Update existing employee info
                                 $existingEmployee->update([
                                     'name' => $name,
+                                    'device_ip' => $device['ip']
                                 ]);
-                                Log::info("Updated employee: {$name} (ID: {$punchCodeId})");
+                                Log::info("Updated employee: {$name} (ID: {$punchCodeId}) from {$deviceType} device");
                             }
                             
                             $allEmployees[] = [

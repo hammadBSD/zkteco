@@ -15,11 +15,15 @@ class Employee extends Model
         'email',
         'department',
         'position',
-        'is_active'
+        'is_active',
+        'device_ip',
+        'device_type',
+        'synced_with_website'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'synced_with_website' => 'boolean',
     ];
 
     public function attendances()

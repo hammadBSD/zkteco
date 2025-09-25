@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Services\ZKTecoPackageService;
+use App\Services\ZKTecoHRSyncService;
 use App\Models\Attendance;
 use Carbon\Carbon;
 
@@ -24,11 +25,13 @@ class FetchRecentAttendanceCron extends Command
     protected $description = 'Fetch recent attendance records from ZKTeco devices (Cron job - runs every 7 minutes)';
 
     protected $zktecoService;
+    protected $hrSyncService;
 
     public function __construct()
     {
         parent::__construct();
         $this->zktecoService = new ZKTecoPackageService();
+        $this->hrSyncService = new ZKTecoHRSyncService();
     }
 
     /**
@@ -85,6 +88,22 @@ class FetchRecentAttendanceCron extends Command
                 
                 // Log success
                 \Log::info("ZKTeco Cron Job Success: Fetched {$newRecords} new records");
+                
+                // Sync to HR system if enabled
+                if (config('zkteco.sync_enabled', true)) {
+                    $this->info('🔄 Syncing data to HR system...');
+                    $syncResult = $this->hrSyncService->syncAllToHR();
+                    
+                    if (isset($syncResult['attendance']['success']) && $syncResult['attendance']['success']) {
+                        $this->info('✅ HR sync completed successfully');
+                        \Log::info("ZKTeco HR Sync Success: " . json_encode($syncResult));
+                    } else {
+                        $this->warn('⚠️ HR sync failed or disabled');
+                        \Log::warning("ZKTeco HR Sync Failed: " . json_encode($syncResult));
+                    }
+                } else {
+                    $this->info('ℹ️ HR sync is disabled');
+                }
                 
             } else {
                 $this->error('❌ Cron job failed!');

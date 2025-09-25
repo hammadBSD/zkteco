@@ -15,12 +15,14 @@ class Attendance extends Model
         'device_type',
         'punch_time',
         'verify_mode',
-        'is_processed'
+        'is_processed',
+        'synced_with_website'
     ];
 
     protected $casts = [
         'punch_time' => 'datetime',
         'is_processed' => 'boolean',
+        'synced_with_website' => 'boolean',
     ];
 
     public function employee()
