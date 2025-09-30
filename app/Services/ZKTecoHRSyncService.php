@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\TargetUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -16,8 +17,24 @@ class ZKTecoHRSyncService
     public function __construct()
     {
         // Configure your HR website URL and API key
-        $this->hrApiUrl = config('zkteco.hr_api_url', 'http://hcm.local/api');
+        $this->hrApiUrl = $this->getHRApiUrl();
         $this->apiKey = config('zkteco.hr_api_key', 'zkteco-secure-api-key-2024');
+    }
+
+    /**
+     * Get HR API URL from database or fallback to config
+     */
+    private function getHRApiUrl()
+    {
+        // Try to get URL from database first
+        $targetUrl = TargetUrl::getUrlByName('hcm_api');
+        
+        if ($targetUrl) {
+            return $targetUrl;
+        }
+        
+        // Fallback to config if not found in database
+        return config('zkteco.hr_api_url', 'http://hcm.local/api');
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Services\ZKTecoHRSyncService;
+use App\Models\TargetUrl;
 
 class TestHRApiConnection extends Command
 {
@@ -39,7 +40,7 @@ class TestHRApiConnection extends Command
         try {
             // Test basic connectivity first
             $this->info('📡 Testing basic connectivity...');
-            $hrApiUrl = config('zkteco.hr_api_url', 'http://localhost:8005/api');
+            $hrApiUrl = $this->getHRApiUrl();
             $this->line("   HR API URL: {$hrApiUrl}");
             
             // Test ping endpoint first
@@ -83,5 +84,21 @@ class TestHRApiConnection extends Command
         }
         
         $this->info('🏁 Test completed!');
+    }
+
+    /**
+     * Get HR API URL from database or fallback to config
+     */
+    private function getHRApiUrl()
+    {
+        // Try to get URL from database first
+        $targetUrl = TargetUrl::getUrlByName('hcm_api');
+        
+        if ($targetUrl) {
+            return $targetUrl;
+        }
+        
+        // Fallback to config if not found in database
+        return config('zkteco.hr_api_url', 'http://hcm.local/api');
     }
 }
