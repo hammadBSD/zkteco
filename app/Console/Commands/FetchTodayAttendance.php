@@ -36,27 +36,38 @@ class FetchTodayAttendance extends Command
                     $this->info("📊 Found " . count($todayRecords) . " records for today");
                     
                     $saved = 0;
+                    $duplicates = 0;
                     foreach ($todayRecords as $record) {
-                        // Check for duplicates
-                        $exists = Attendance::where('punch_code_id', $record['id'])
-                            ->where('device_ip', $device['ip'])
-                            ->where('punch_time', $record['timestamp'])
-                            ->exists();
-                        
-                        if (!$exists) {
-                            Attendance::create([
-                                'punch_code_id' => $record['id'],
-                                'device_ip' => $device['ip'],
-                                'device_type' => $deviceType,
-                                'punch_time' => $record['timestamp'],
-                                'verify_mode' => $record['type'] ?? 1,
-                                'is_processed' => false
-                            ]);
-                            $saved++;
+                        try {
+                            $attendance = Attendance::updateOrCreate(
+                                [
+                                    'punch_code_id' => $record['id'],
+                                    'device_ip' => $device['ip'],
+                                    'punch_time' => $record['timestamp'],
+                                ],
+                                [
+                                    'device_type' => $deviceType,
+                                    'verify_mode' => $record['type'] ?? 1,
+                                    'is_processed' => false
+                                ]
+                            );
+                            
+                            // Check if it was newly created or updated
+                            if ($attendance->wasRecentlyCreated) {
+                                $saved++;
+                            } else {
+                                $duplicates++;
+                            }
+                        } catch (\Exception $e) {
+                            // Handle any unique constraint violations gracefully
+                            $duplicates++;
                         }
                     }
                     
                     $this->info("💾 Saved {$saved} new {$deviceType} records");
+                    if ($duplicates > 0) {
+                        $this->info("🔄 Skipped {$duplicates} duplicate {$deviceType} records");
+                    }
                     $totalSaved += $saved;
                     
                     $zk->disconnect();

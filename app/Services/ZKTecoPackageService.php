@@ -240,23 +240,28 @@ class ZKTecoPackageService
         // Save attendance records
         foreach ($extractedData['raw_data'] as $deviceType => $records) {
             foreach ($records as $record) {
-                // Check for duplicates
-                $exists = Attendance::where('punch_code_id', $record['employee_id'])
-                    ->where('device_ip', $record['device_ip'])
-                    ->where('punch_time', $record['punch_time'])
-                    ->exists();
-
-                if (!$exists) {
-                    Attendance::create([
-                        'punch_code_id' => $record['employee_id'],
-                        'device_ip' => $record['device_ip'],
-                        'device_type' => $record['device_type'],
-                        'punch_time' => $record['punch_time'],
-                        'verify_mode' => $record['verify_mode'],
-                        'is_processed' => false
-                    ]);
-                    $saved['attendance_records']++;
-                } else {
+                try {
+                    $attendance = Attendance::updateOrCreate(
+                        [
+                            'punch_code_id' => $record['employee_id'],
+                            'device_ip' => $record['device_ip'],
+                            'punch_time' => $record['punch_time'],
+                        ],
+                        [
+                            'device_type' => $record['device_type'],
+                            'verify_mode' => $record['verify_mode'],
+                            'is_processed' => false
+                        ]
+                    );
+                    
+                    // Check if it was newly created or updated
+                    if ($attendance->wasRecentlyCreated) {
+                        $saved['attendance_records']++;
+                    } else {
+                        $saved['duplicates_skipped']++;
+                    }
+                } catch (\Exception $e) {
+                    // Handle any unique constraint violations gracefully
                     $saved['duplicates_skipped']++;
                 }
             }

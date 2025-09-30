@@ -106,25 +106,30 @@ class FetchMonthlyAttendance extends Command
         $duplicateCount = 0;
         
         foreach ($monthlyData as $record) {
-            // Check if record already exists
-            $exists = MonthlyAttendance::where('punch_code', $record['punch_code'])
-                ->where('device_ip', $record['device_ip'])
-                ->where('punch_time', $record['punch_time'])
-                ->exists();
-            
-            if (!$exists) {
-                MonthlyAttendance::create([
-                    'punch_code' => $record['punch_code'],
-                    'device_ip' => $record['device_ip'],
-                    'device_type' => $record['device_type'],
-                    'punch_time' => Carbon::parse($record['punch_time']),
-                    'punch_type' => $record['punch_type'] ?? null,
-                    'verify_mode' => $record['verify_mode'] ?? null,
-                    'is_processed' => false,
-                    'synced_with_website' => false,
-                ]);
-                $savedCount++;
-            } else {
+            try {
+                $monthlyAttendance = MonthlyAttendance::updateOrCreate(
+                    [
+                        'punch_code' => $record['punch_code'],
+                        'device_ip' => $record['device_ip'],
+                        'punch_time' => Carbon::parse($record['punch_time']),
+                    ],
+                    [
+                        'device_type' => $record['device_type'],
+                        'punch_type' => $record['punch_type'] ?? null,
+                        'verify_mode' => $record['verify_mode'] ?? null,
+                        'is_processed' => false,
+                        'synced_with_website' => false,
+                    ]
+                );
+                
+                // Check if it was newly created or updated
+                if ($monthlyAttendance->wasRecentlyCreated) {
+                    $savedCount++;
+                } else {
+                    $duplicateCount++;
+                }
+            } catch (\Exception $e) {
+                // Handle any unique constraint violations gracefully
                 $duplicateCount++;
             }
         }
