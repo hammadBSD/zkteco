@@ -16,7 +16,7 @@ class ZKTecoHRSyncService
     public function __construct()
     {
         // Configure your HR website URL and API key
-        $this->hrApiUrl = config('zkteco.hr_api_url', 'http://localhost:8005/api');
+        $this->hrApiUrl = config('zkteco.hr_api_url', 'http://hcm.local/api');
         $this->apiKey = config('zkteco.hr_api_key', 'zkteco-secure-api-key-2024');
     }
 
