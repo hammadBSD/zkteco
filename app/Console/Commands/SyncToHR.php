@@ -12,7 +12,7 @@ class SyncToHR extends Command
      *
      * @var string
      */
-    protected $signature = 'zkteco:sync-to-hr {--type=all : Type of data to sync (all, attendance, employees)}';
+    protected $signature = 'zkteco:sync-to-hr {--type=all : Type of data to sync (all, attendance, employees, monthly-attendance)} {--month= : Specific month for monthly attendance sync (YYYY-MM format)}';
 
     /**
      * The console command description.
@@ -35,6 +35,7 @@ class SyncToHR extends Command
     public function handle()
     {
         $type = $this->option('type');
+        $month = $this->option('month');
         
         $this->info('🔄 Starting ZKTeco to HR sync...');
         $this->info("📋 Sync type: {$type}");
@@ -51,6 +52,16 @@ class SyncToHR extends Command
                     $this->info('👥 Syncing employee data...');
                     $result = $this->hrSyncService->syncEmployeesToHR();
                     $this->displayResult('Employees', $result);
+                    break;
+                    
+                case 'monthly-attendance':
+                    if (!$month) {
+                        $this->error('❌ Month parameter is required for monthly attendance sync. Use --month=YYYY-MM');
+                        return;
+                    }
+                    $this->info("📅 Syncing monthly attendance data for {$month}...");
+                    $result = $this->hrSyncService->syncMonthlyAttendanceToHR($month);
+                    $this->displayResult('Monthly Attendance', $result);
                     break;
                     
                 case 'all':

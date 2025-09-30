@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\MonthlyAttendance;
 use App\Models\TargetUrl;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -159,6 +160,140 @@ class ZKTecoHRSyncService
 
         } catch (\Exception $e) {
             Log::error('ZKTeco HR Sync: Error syncing employees: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Sync monthly attendance data to HR system
+     */
+    public function syncMonthlyAttendanceToHR($month = null)
+    {
+        try {
+            // Parse month parameter
+            if ($month) {
+                $monthParts = explode('-', $month);
+                if (count($monthParts) !== 2) {
+                    return ['success' => false, 'message' => 'Invalid month format. Use YYYY-MM'];
+                }
+                
+                $year = (int) $monthParts[0];
+                $monthNum = (int) $monthParts[1];
+                
+                // Validate month
+                if ($monthNum < 1 || $monthNum > 12) {
+                    return ['success' => false, 'message' => 'Invalid month. Must be between 01-12'];
+                }
+                
+                // Get monthly attendance records for the specified month
+                $monthlyRecords = MonthlyAttendance::whereYear('punch_time', $year)
+                    ->whereMonth('punch_time', $monthNum)
+                    ->where(function($query) {
+                        $query->whereNull('synced_with_website')
+                              ->orWhere('synced_with_website', false);
+                    })
+                    ->get();
+            } else {
+                // If no month specified, get all unsynced monthly records
+                $monthlyRecords = MonthlyAttendance::where(function($query) {
+                    $query->whereNull('synced_with_website')
+                          ->orWhere('synced_with_website', false);
+                })->get();
+            }
+
+            if ($monthlyRecords->isEmpty()) {
+                Log::info('ZKTeco HR Sync: No monthly attendance records to sync');
+                return [
+                    'success' => true, 
+                    'message' => 'No monthly attendance records to sync',
+                    'data' => [
+                        'records_synced' => 0,
+                        'month' => $month ?? 'all'
+                    ]
+                ];
+            }
+
+            // Format data for HR API
+            $formattedRecords = $monthlyRecords->map(function ($record) {
+                return [
+                    'punch_code' => $record->punch_code,
+                    'device_ip' => $record->device_ip,
+                    'device_type' => $record->device_type,
+                    'punch_time' => $record->punch_time->toISOString(),
+                    'punch_type' => $record->punch_type,
+                    'verify_mode' => $record->verify_mode,
+                    'is_processed' => $record->is_processed
+                ];
+            })->toArray();
+
+            $payload = [
+                'monthly_attendance_records' => $formattedRecords,
+                'sync_timestamp' => Carbon::now()->toISOString(),
+                'source' => 'ZKTeco-Monthly',
+                'month' => $month
+            ];
+
+            // Send to HR API in batches to avoid timeout
+            $batchSize = 100; // Process 100 records at a time
+            $totalRecords = count($formattedRecords);
+            $totalBatches = ceil($totalRecords / $batchSize);
+            $totalSynced = 0;
+            
+            Log::info("ZKTeco HR Sync: Processing {$totalRecords} monthly attendance records in {$totalBatches} batches");
+            
+            for ($i = 0; $i < $totalBatches; $i++) {
+                $offset = $i * $batchSize;
+                $batch = array_slice($formattedRecords, $offset, $batchSize);
+                
+                $batchPayload = [
+                    'monthly_attendance_records' => $batch,
+                    'sync_timestamp' => Carbon::now()->toISOString(),
+                    'source' => 'ZKTeco-Monthly',
+                    'month' => $month,
+                    'batch_info' => [
+                        'current_batch' => $i + 1,
+                        'total_batches' => $totalBatches,
+                        'records_in_batch' => count($batch)
+                    ]
+                ];
+                
+                $response = Http::timeout(60)->withHeaders([
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])->post($this->hrApiUrl . '/zkteco/sync-monthly-attendance', $batchPayload);
+                
+                if ($response->successful()) {
+                    $result = $response->json();
+                    $batchSynced = $result['data']['saved_records'] ?? 0;
+                    $totalSynced += $batchSynced;
+                    
+                    Log::info("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} synced successfully - {$batchSynced} records");
+                } else {
+                    Log::error("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} failed", [
+                        'status' => $response->status(),
+                        'response' => $response->body()
+                    ]);
+                    return ['success' => false, 'message' => "Failed to sync batch " . ($i + 1) . "/{$totalBatches}"];
+                }
+            }
+
+            // Mark monthly attendance records as synced
+            MonthlyAttendance::whereIn('id', $monthlyRecords->pluck('id'))->update(['synced_with_website' => true]);
+            Log::info('ZKTeco HR Sync: Monthly attendance synced successfully - Total synced: ' . $totalSynced);
+            
+            return [
+                'success' => true,
+                'message' => "Monthly attendance synced successfully for {$month}",
+                'data' => [
+                    'records_synced' => $totalSynced,
+                    'total_batches' => $totalBatches,
+                    'month' => $month
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('ZKTeco HR Sync: Error syncing monthly attendance: ' . $e->getMessage());
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }

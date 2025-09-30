@@ -69,6 +69,12 @@
                         <a class="nav-link" href="#" onclick="fetchLimitedData(15)">
                             <i class="fas fa-list"></i> Recent Records
                         </a>
+                        <a class="nav-link" href="#" onclick="syncAttendanceWithWebsite()">
+                            <i class="fas fa-sync-alt"></i> Sync Attendance with Website
+                        </a>
+                        <a class="nav-link" href="#" onclick="showMonthlyAttendance()">
+                            <i class="fas fa-calendar-alt"></i> Monthly Attendance
+                        </a>
                         <a class="nav-link" href="{{ route('settings.index') }}">
                             <i class="fas fa-cog"></i> Settings
                         </a>
@@ -281,6 +287,160 @@
                 console.error('Fetch error:', error);
                 showAlert('Error: ' + error.message, 'danger');
             });
+        }
+
+        function syncAttendanceWithWebsite() {
+            showLoading();
+            showAlert('Syncing attendance data with website...', 'info');
+            
+            fetch('/attendance/sync-with-website', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    let message = data.message + '<br>';
+                    if (data.data && data.data.summary) {
+                        data.data.summary.forEach(line => {
+                            message += line + '<br>';
+                        });
+                    }
+                    showAlert(message, 'success');
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Sync error:', error);
+                showAlert('Error: ' + error.message, 'danger');
+            });
+        }
+
+        function showMonthlyAttendance() {
+            showLoading();
+            showAlert('Loading monthly attendance data...', 'info');
+            
+            fetch('/attendance/monthly-attendance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    displayMonthlyAttendance(data.data);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Monthly attendance error:', error);
+                showAlert('Error: ' + error.message, 'danger');
+            });
+        }
+
+        function displayMonthlyAttendance(data) {
+            let html = `
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Monthly Attendance - ${data.current_month}</h5>
+                        <span class="badge bg-primary">Total: ${data.total_this_month} records</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6>Daily Summary</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Records Count</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+            `;
+            
+            data.monthly_summary.forEach(day => {
+                html += `
+                    <tr>
+                        <td>${new Date(day.date).toLocaleDateString()}</td>
+                        <td><span class="badge bg-info">${day.total_records}</span></td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-12">
+                                <h6>Recent Days Detail (Last 7 Days)</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Punch Code</th>
+                                                <th>Device</th>
+                                                <th>Time</th>
+                                                <th>Type</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+            `;
+            
+            Object.keys(data.recent_days).forEach(date => {
+                data.recent_days[date].forEach(record => {
+                    html += `
+                        <tr>
+                            <td>${new Date(date).toLocaleDateString()}</td>
+                            <td>${record.punch_code}</td>
+                            <td><span class="badge bg-${record.device_type == 'IN' ? 'success' : 'warning'}">${record.device_type}</span></td>
+                            <td>${record.time}</td>
+                            <td>${record.punch_type || '-'}</td>
+                        </tr>
+                    `;
+                });
+            });
+            
+            html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Replace the main content with monthly attendance data
+            document.querySelector('.main-content').innerHTML = html;
+            showAlert('Monthly attendance data loaded successfully', 'success');
         }
     </script>
             </div>

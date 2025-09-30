@@ -69,6 +69,12 @@
                         <a class="nav-link" href="#" onclick="fetchLimitedData(15)">
                             <i class="fas fa-list"></i> Recent Records
                         </a>
+                        <a class="nav-link" href="#" onclick="syncAttendanceWithWebsite()">
+                            <i class="fas fa-sync-alt"></i> Sync Attendance with Website
+                        </a>
+                        <a class="nav-link" href="#" onclick="showMonthlyAttendance()">
+                            <i class="fas fa-calendar-alt"></i> Monthly Attendance
+                        </a>
                         <a class="nav-link active" href="{{ route('settings.index') }}">
                             <i class="fas fa-cog"></i> Settings
                         </a>

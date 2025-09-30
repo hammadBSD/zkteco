@@ -10,4 +10,6 @@ Route::get('/', function () {
 Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
 Route::post('/attendance/fetch-today', [AttendanceController::class, 'fetchToday'])->name('attendance.fetch-today');
 Route::post('/attendance/fetch-limited/{limit}', [AttendanceController::class, 'fetchLimited'])->name('attendance.fetch-limited');
+Route::post('/attendance/sync-with-website', [AttendanceController::class, 'syncWithWebsite'])->name('attendance.sync-with-website');
+Route::post('/attendance/monthly-attendance', [AttendanceController::class, 'monthlyAttendance'])->name('attendance.monthly-attendance');
 Route::get('/settings', [AttendanceController::class, 'settings'])->name('settings.index');
