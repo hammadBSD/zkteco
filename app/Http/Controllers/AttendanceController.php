@@ -8,6 +8,7 @@ use App\Services\ZKTecoHRSyncService;
 use App\Models\Employee;
 use App\Models\Attendance;
 use App\Models\MonthlyAttendance;
+use App\Models\CronLog;
 use Illuminate\Support\Facades\Artisan;
 
 class AttendanceController extends Controller
@@ -135,6 +136,49 @@ class AttendanceController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error fetching monthly attendance: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    public function cronLogs()
+    {
+        try {
+            // Get recent cron logs (last 50)
+            $recentLogs = CronLog::recent(50)->get();
+            
+            // Get statistics
+            $stats = [
+                'total_runs' => CronLog::count(),
+                'successful_runs' => CronLog::byStatus('success')->count(),
+                'failed_runs' => CronLog::byStatus('failed')->count(),
+                'running_jobs' => CronLog::byStatus('running')->count(),
+                'today_runs' => CronLog::today()->count(),
+                'last_24h_runs' => CronLog::last24Hours()->count(),
+                'last_success' => CronLog::byStatus('success')->latest('completed_at')->first(),
+                'last_failure' => CronLog::byStatus('failed')->latest('completed_at')->first(),
+            ];
+            
+            // Get logs grouped by status for the last 7 days
+            $weeklyStats = CronLog::where('started_at', '>=', now()->subDays(7))
+                ->selectRaw('DATE(started_at) as date, status, COUNT(*) as count')
+                ->groupBy('date', 'status')
+                ->orderBy('date', 'desc')
+                ->get()
+                ->groupBy('date');
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Cron logs retrieved successfully',
+                'data' => [
+                    'recent_logs' => $recentLogs,
+                    'statistics' => $stats,
+                    'weekly_stats' => $weeklyStats
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching cron logs: ' . $e->getMessage()
             ], 500);
         }
     }

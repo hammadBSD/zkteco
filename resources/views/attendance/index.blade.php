@@ -75,6 +75,9 @@
                         <a class="nav-link" href="#" onclick="showMonthlyAttendance()">
                             <i class="fas fa-calendar-alt"></i> Monthly Attendance
                         </a>
+                        <a class="nav-link" href="#" onclick="showCronLogs()">
+                            <i class="fas fa-tasks"></i> Cron Logs
+                        </a>
                         <a class="nav-link" href="{{ route('settings.index') }}">
                             <i class="fas fa-cog"></i> Settings
                         </a>
@@ -441,6 +444,144 @@
             // Replace the main content with monthly attendance data
             document.querySelector('.main-content').innerHTML = html;
             showAlert('Monthly attendance data loaded successfully', 'success');
+        }
+
+        function showCronLogs() {
+            showLoading();
+            showAlert('Loading cron logs...', 'info');
+            
+            fetch('/attendance/cron-logs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    displayCronLogs(data.data);
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                console.error('Cron logs error:', error);
+                showAlert('Error: ' + error.message, 'danger');
+            });
+        }
+
+        function displayCronLogs(data) {
+            let html = `
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Cron Job Logs</h5>
+                        <div>
+                            <span class="badge bg-success me-2">Success: ${data.statistics.successful_runs}</span>
+                            <span class="badge bg-danger me-2">Failed: ${data.statistics.failed_runs}</span>
+                            <span class="badge bg-warning">Running: ${data.statistics.running_jobs}</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="card bg-primary text-white">
+                                    <div class="card-body text-center">
+                                        <h4>${data.statistics.total_runs}</h4>
+                                        <small>Total Runs</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-success text-white">
+                                    <div class="card-body text-center">
+                                        <h4>${data.statistics.today_runs}</h4>
+                                        <small>Today's Runs</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-info text-white">
+                                    <div class="card-body text-center">
+                                        <h4>${data.statistics.last_24h_runs}</h4>
+                                        <small>Last 24h Runs</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="card bg-warning text-white">
+                                    <div class="card-body text-center">
+                                        <h4>${data.statistics.running_jobs}</h4>
+                                        <small>Currently Running</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-4">
+                            <div class="col-md-12">
+                                <h6>Recent Log Entries</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Started</th>
+                                                <th>Month</th>
+                                                <th>Status</th>
+                                                <th>Duration</th>
+                                                <th>Completed</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+            `;
+            
+            data.recent_logs.forEach(log => {
+                const statusBadge = log.status === 'success' ? 'success' : 
+                                  log.status === 'failed' ? 'danger' : 'warning';
+                const statusText = log.status.charAt(0).toUpperCase() + log.status.slice(1);
+                
+                html += `
+                    <tr>
+                        <td>${new Date(log.started_at).toLocaleString()}</td>
+                        <td>${log.month || '-'}</td>
+                        <td><span class="badge bg-${statusBadge}">${statusText}</span></td>
+                        <td>${log.duration_seconds ? (Math.floor(log.duration_seconds/60) + 'm ' + (log.duration_seconds%60) + 's') : '-'}</td>
+                        <td>${log.completed_at ? new Date(log.completed_at).toLocaleString() : '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewLogDetails(${log.id})">
+                                <i class="fas fa-eye"></i> View
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Replace the main content with cron logs data
+            document.querySelector('.main-content').innerHTML = html;
+            showAlert('Cron logs loaded successfully', 'success');
+        }
+
+        function viewLogDetails(logId) {
+            // This could be expanded to show detailed log information
+            showAlert(`Viewing details for log ID: ${logId}`, 'info');
         }
     </script>
             </div>

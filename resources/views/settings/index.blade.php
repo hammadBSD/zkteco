@@ -75,6 +75,9 @@
                         <a class="nav-link" href="#" onclick="showMonthlyAttendance()">
                             <i class="fas fa-calendar-alt"></i> Monthly Attendance
                         </a>
+                        <a class="nav-link" href="#" onclick="showCronLogs()">
+                            <i class="fas fa-tasks"></i> Cron Logs
+                        </a>
                         <a class="nav-link active" href="{{ route('settings.index') }}">
                             <i class="fas fa-cog"></i> Settings
                         </a>

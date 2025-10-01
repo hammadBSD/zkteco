@@ -1,0 +1,3 @@
+# ZKTeco Monthly Attendance Sync - Runs every 10 minutes
+# This will automatically sync the current month's attendance data
+*/10 * * * * cd /Applications/MAMP/htdocs/zkteco && ./fetch_and_sync_monthly.sh >/dev/null 2>&1

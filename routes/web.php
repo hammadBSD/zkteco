@@ -12,4 +12,5 @@ Route::post('/attendance/fetch-today', [AttendanceController::class, 'fetchToday
 Route::post('/attendance/fetch-limited/{limit}', [AttendanceController::class, 'fetchLimited'])->name('attendance.fetch-limited');
 Route::post('/attendance/sync-with-website', [AttendanceController::class, 'syncWithWebsite'])->name('attendance.sync-with-website');
 Route::post('/attendance/monthly-attendance', [AttendanceController::class, 'monthlyAttendance'])->name('attendance.monthly-attendance');
+Route::post('/attendance/cron-logs', [AttendanceController::class, 'cronLogs'])->name('attendance.cron-logs');
 Route::get('/settings', [AttendanceController::class, 'settings'])->name('settings.index');
