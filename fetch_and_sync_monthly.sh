@@ -12,6 +12,11 @@
 # 
 # If no month is provided, it will use the current month
 
+# Set up environment for cron (fix network connectivity issues)
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export HOME="/Users/$(whoami)"
+export USER="$(whoami)"
+
 # Get month parameter or use current month
 MONTH=${1:-$(date +%Y-%m)}
 
@@ -34,6 +39,21 @@ echo "📅 Target Month: $MONTH" | tee -a "$LOG_FILE"
 echo "🕐 Started at: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a "$LOG_FILE"
 echo "📊 Database Log ID: $LOG_ID" | tee -a "$LOG_FILE"
 echo "==================================================" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# Test network connectivity to ZKTeco devices
+echo "🔍 Testing network connectivity to ZKTeco devices..." | tee -a "$LOG_FILE"
+if ping -c 1 -W 3000 172.16.10.14 >/dev/null 2>&1; then
+    echo "✅ IN device (172.16.10.14) is reachable" | tee -a "$LOG_FILE"
+else
+    echo "❌ IN device (172.16.10.14) is NOT reachable" | tee -a "$LOG_FILE"
+fi
+
+if ping -c 1 -W 3000 172.16.10.15 >/dev/null 2>&1; then
+    echo "✅ OUT device (172.16.10.15) is reachable" | tee -a "$LOG_FILE"
+else
+    echo "❌ OUT device (172.16.10.15) is NOT reachable" | tee -a "$LOG_FILE"
+fi
 echo "" | tee -a "$LOG_FILE"
 
 # Step 1: Fetch monthly attendance data

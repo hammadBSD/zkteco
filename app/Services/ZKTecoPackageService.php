@@ -140,11 +140,9 @@ class ZKTecoPackageService
                     Log::info("Using getTodaysRecords() for today's data...");
                     $attendance = \App\ZKTeco\Lib\ZKTeco::getTodaysRecords($zk);
                 } else {
-                    // For other date ranges, use getAttendance() with limit to avoid timeout
-                    // Use smaller limit for OUT device to prevent timeout
-                    $limit = ($deviceType === 'OUT') ? 500 : 1000;
-                    Log::info("Using getAttendance() with limit {$limit} for date range...");
-                    $attendance = $zk->getAttendance($limit);
+                    // For other date ranges, use getAttendance() without limit to get all records
+                    Log::info("Using getAttendance() without limit for date range...");
+                    $attendance = $zk->getAttendance();
                 }
                 
                 if (!empty($attendance)) {
