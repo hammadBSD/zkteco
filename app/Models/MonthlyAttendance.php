@@ -18,12 +18,14 @@ class MonthlyAttendance extends Model
         'verify_mode',
         'is_processed',
         'synced_with_website',
+        'synced_with_live_website',
     ];
 
     protected $casts = [
         'punch_time' => 'datetime',
         'is_processed' => 'boolean',
         'synced_with_website' => 'boolean',
+        'synced_with_live_website' => 'boolean',
     ];
 
     /**

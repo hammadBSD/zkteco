@@ -23,19 +23,69 @@ class ZKTecoHRSyncService
     }
 
     /**
-     * Get HR API URL from database or fallback to config
+     * Get HR API URLs from database or fallback to config
      */
-    private function getHRApiUrl()
+    private function getHRApiUrls()
     {
-        // Try to get URL from database first
-        $targetUrl = TargetUrl::getUrlByName('hcm_api');
+        // Try to get URLs from database first
+        $targetUrls = TargetUrl::where('name', 'hcm_api')->get();
         
-        if ($targetUrl) {
-            return $targetUrl;
+        if ($targetUrls->isNotEmpty()) {
+            return $targetUrls->pluck('target_url')->toArray();
         }
         
         // Fallback to config if not found in database
-        return config('zkteco.hr_api_url', 'http://hcm.local/api');
+        return [config('zkteco.hr_api_url', 'http://hcm.local/api')];
+    }
+
+    /**
+     * Get single HR API URL (for backward compatibility)
+     */
+    private function getHRApiUrl()
+    {
+        $urls = $this->getHRApiUrls();
+        return $urls[0]; // Return first URL for backward compatibility
+    }
+
+    /**
+     * Sync data to multiple URLs
+     */
+    private function syncToMultipleUrls($endpoint, $payload, $isLiveUrl = false)
+    {
+        $urls = $this->getHRApiUrls();
+        $results = [];
+        
+        foreach ($urls as $url) {
+            $isHttps = strpos($url, 'https://') === 0;
+            
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json'
+                ])->post($url . $endpoint, $payload);
+
+                $results[$url] = [
+                    'success' => $response->successful(),
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                    'is_https' => $isHttps
+                ];
+
+                Log::info("ZKTeco HR Sync: Synced to {$url}", $results[$url]);
+
+            } catch (\Exception $e) {
+                $results[$url] = [
+                    'success' => false,
+                    'error' => $e->getMessage(),
+                    'is_https' => $isHttps
+                ];
+                
+                Log::error("ZKTeco HR Sync: Failed to sync to {$url}", ['error' => $e->getMessage()]);
+            }
+        }
+        
+        return $results;
     }
 
     /**
@@ -74,26 +124,32 @@ class ZKTecoHRSyncService
                 'source' => 'ZKTeco-Local'
             ];
 
-            // Send to HR API
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json'
-            ])->post($this->hrApiUrl . '/zkteco/sync-attendance', $payload);
+            // Sync to all URLs
+            $results = $this->syncToMultipleUrls('/zkteco/sync-attendance', $payload);
 
-            if ($response->successful()) {
-                $result = $response->json();
-                // Mark attendance records as synced
-                Attendance::whereIn('id', $attendanceRecords->pluck('id'))->update(['synced_with_website' => true]);
-                Log::info('ZKTeco HR Sync: Attendance synced successfully', $result);
-                return $result;
-            } else {
-                Log::error('ZKTeco HR Sync: Failed to sync attendance', [
-                    'status' => $response->status(),
-                    'response' => $response->body()
-                ]);
-                return ['success' => false, 'message' => 'Failed to sync attendance'];
+            // Mark records as synced based on URL type
+            $recordIds = $attendanceRecords->pluck('id');
+            
+            foreach ($results as $url => $result) {
+                if ($result['success'] && $result['is_https']) {
+                    // HTTPS URL - mark as synced to live website
+                    Attendance::whereIn('id', $recordIds)->update(['synced_with_website' => true]);
+                    Log::info("ZKTeco HR Sync: Attendance synced to live website ({$url})");
+                } elseif ($result['success'] && !$result['is_https']) {
+                    // HTTP URL - mark as synced to regular website
+                    Attendance::whereIn('id', $recordIds)->update(['synced_with_website' => true]);
+                    Log::info("ZKTeco HR Sync: Attendance synced to regular website ({$url})");
+                }
             }
+
+            $successCount = collect($results)->where('success', true)->count();
+            $totalCount = count($results);
+
+            return [
+                'success' => $successCount > 0,
+                'message' => "Synced to {$successCount}/{$totalCount} URLs",
+                'results' => $results
+            ];
 
         } catch (\Exception $e) {
             Log::error('ZKTeco HR Sync: Error syncing attendance: ' . $e->getMessage());
@@ -185,19 +241,29 @@ class ZKTecoHRSyncService
                     return ['success' => false, 'message' => 'Invalid month. Must be between 01-12'];
                 }
                 
-                // Get monthly attendance records for the specified month
+                // Get monthly attendance records for the specified month that are not synced to either website
                 $monthlyRecords = MonthlyAttendance::whereYear('punch_time', $year)
                     ->whereMonth('punch_time', $monthNum)
                     ->where(function($query) {
-                        $query->whereNull('synced_with_website')
+                        $query->where(function($q) {
+                            $q->whereNull('synced_with_website')
                               ->orWhere('synced_with_website', false);
+                        })->orWhere(function($q) {
+                            $q->whereNull('synced_with_live_website')
+                              ->orWhere('synced_with_live_website', false);
+                        });
                     })
                     ->get();
             } else {
                 // If no month specified, get all unsynced monthly records
                 $monthlyRecords = MonthlyAttendance::where(function($query) {
-                    $query->whereNull('synced_with_website')
+                    $query->where(function($q) {
+                        $q->whereNull('synced_with_website')
                           ->orWhere('synced_with_website', false);
+                    })->orWhere(function($q) {
+                        $q->whereNull('synced_with_live_website')
+                          ->orWhere('synced_with_live_website', false);
+                    });
                 })->get();
             }
 
@@ -238,9 +304,11 @@ class ZKTecoHRSyncService
             $totalRecords = count($formattedRecords);
             $totalBatches = ceil($totalRecords / $batchSize);
             $totalSynced = 0;
+            $urls = $this->getHRApiUrls();
             
-            Log::info("ZKTeco HR Sync: Processing {$totalRecords} monthly attendance records in {$totalBatches} batches");
+            Log::info("ZKTeco HR Sync: Processing {$totalRecords} monthly attendance records in {$totalBatches} batches to " . count($urls) . " URLs");
             
+            // Process each batch
             for ($i = 0; $i < $totalBatches; $i++) {
                 $offset = $i * $batchSize;
                 $batch = array_slice($formattedRecords, $offset, $batchSize);
@@ -257,29 +325,65 @@ class ZKTecoHRSyncService
                     ]
                 ];
                 
-                $response = Http::timeout(60)->withHeaders([
-                    'Authorization' => 'Bearer ' . $this->apiKey,
-                    'Content-Type' => 'application/json',
-                    'Accept' => 'application/json'
-                ])->post($this->hrApiUrl . '/zkteco/sync-monthly-attendance', $batchPayload);
-                
-                if ($response->successful()) {
-                    $result = $response->json();
-                    $batchSynced = $result['data']['saved_records'] ?? 0;
-                    $totalSynced += $batchSynced;
+                // Sync batch to all URLs
+                $batchResults = [];
+                foreach ($urls as $url) {
+                    $isHttps = strpos($url, 'https://') === 0;
                     
-                    Log::info("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} synced successfully - {$batchSynced} records");
-                } else {
-                    Log::error("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} failed", [
-                        'status' => $response->status(),
-                        'response' => $response->body()
-                    ]);
-                    return ['success' => false, 'message' => "Failed to sync batch " . ($i + 1) . "/{$totalBatches}"];
+                    try {
+                        $response = Http::timeout(60)->withHeaders([
+                            'Authorization' => 'Bearer ' . $this->apiKey,
+                            'Content-Type' => 'application/json',
+                            'Accept' => 'application/json'
+                        ])->post($url . '/zkteco/sync-monthly-attendance', $batchPayload);
+                        
+                        $batchResults[$url] = [
+                            'success' => $response->successful(),
+                            'status' => $response->status(),
+                            'response' => $response->body(),
+                            'is_https' => $isHttps
+                        ];
+                        
+                        if ($response->successful()) {
+                            $result = $response->json();
+                            $batchSynced = $result['data']['saved_records'] ?? count($batch);
+                            $totalSynced += $batchSynced;
+                            
+                            Log::info("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} synced to {$url} - {$batchSynced} records");
+                        } else {
+                            Log::error("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} failed for {$url}", [
+                                'status' => $response->status(),
+                                'response' => $response->body()
+                            ]);
+                        }
+                        
+                    } catch (\Exception $e) {
+                        $batchResults[$url] = [
+                            'success' => false,
+                            'error' => $e->getMessage(),
+                            'is_https' => $isHttps
+                        ];
+                        
+                        Log::error("ZKTeco HR Sync: Batch " . ($i + 1) . "/{$totalBatches} exception for {$url}: " . $e->getMessage());
+                    }
+                }
+                
+                // Mark records as synced based on URL type
+                $batchRecordIds = array_slice($monthlyRecords->pluck('id')->toArray(), $offset, $batchSize);
+                
+                foreach ($batchResults as $url => $result) {
+                    if ($result['success'] && $result['is_https']) {
+                        // HTTPS URL - mark as synced to live website
+                        MonthlyAttendance::whereIn('id', $batchRecordIds)->update(['synced_with_live_website' => true]);
+                        Log::info("ZKTeco HR Sync: Monthly attendance batch marked as synced to live website ({$url})");
+                    } elseif ($result['success'] && !$result['is_https']) {
+                        // HTTP URL - mark as synced to regular website
+                        MonthlyAttendance::whereIn('id', $batchRecordIds)->update(['synced_with_website' => true]);
+                        Log::info("ZKTeco HR Sync: Monthly attendance batch marked as synced to regular website ({$url})");
+                    }
                 }
             }
 
-            // Mark monthly attendance records as synced
-            MonthlyAttendance::whereIn('id', $monthlyRecords->pluck('id'))->update(['synced_with_website' => true]);
             Log::info('ZKTeco HR Sync: Monthly attendance synced successfully - Total synced: ' . $totalSynced);
             
             return [

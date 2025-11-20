@@ -38,26 +38,44 @@ class TestHRApiConnection extends Command
         $this->info('🔍 Testing HR API Connection...');
         
         try {
-            // Test basic connectivity first
+            // Test basic connectivity to all URLs
             $this->info('📡 Testing basic connectivity...');
-            $hrApiUrl = $this->getHRApiUrl();
-            $this->line("   HR API URL: {$hrApiUrl}");
+            $hrApiUrls = $this->getHRApiUrls();
             
-            // Test ping endpoint first
-            $this->info('🏓 Testing ping endpoint...');
-            $pingResponse = \Illuminate\Support\Facades\Http::get($hrApiUrl . '/ping');
+            $this->line("   Found " . count($hrApiUrls) . " HR API URLs:");
+            foreach ($hrApiUrls as $i => $url) {
+                $isHttps = strpos($url, 'https://') === 0;
+                $type = $isHttps ? 'LIVE' : 'LOCAL';
+                $this->line("   " . ($i + 1) . ". {$url} ({$type})");
+            }
             
-            if ($pingResponse->successful()) {
-                $this->info('✅ Ping successful!');
-                $this->line('   Response: ' . $pingResponse->body());
-            } else {
-                $this->error('❌ Ping failed!');
-                $this->error('   Status: ' . $pingResponse->status());
-                $this->error('   Response: ' . $pingResponse->body());
+            $allSuccessful = true;
+            
+            // Test ping endpoint for each URL
+            foreach ($hrApiUrls as $i => $hrApiUrl) {
+                $isHttps = strpos($hrApiUrl, 'https://') === 0;
+                $type = $isHttps ? 'LIVE' : 'LOCAL';
+                
+                $this->info("🏓 Testing ping endpoint for {$type} ({$hrApiUrl})...");
+                $pingResponse = \Illuminate\Support\Facades\Http::get($hrApiUrl . '/ping');
+                
+                if ($pingResponse->successful()) {
+                    $this->info("✅ Ping successful for {$type}!");
+                    $this->line('   Response: ' . $pingResponse->body());
+                } else {
+                    $this->error("❌ Ping failed for {$type}!");
+                    $this->error('   Status: ' . $pingResponse->status());
+                    $this->error('   Response: ' . $pingResponse->body());
+                    $allSuccessful = false;
+                }
+            }
+            
+            if (!$allSuccessful) {
+                $this->error('❌ Some URLs failed ping test. Stopping here.');
                 return;
             }
             
-            // Test sync status endpoint with authentication
+            // Test sync status endpoint with authentication (using first URL)
             $this->info('📡 Testing sync status endpoint...');
             $status = $this->hrSyncService->getHRSyncStatus();
             
@@ -87,18 +105,27 @@ class TestHRApiConnection extends Command
     }
 
     /**
-     * Get HR API URL from database or fallback to config
+     * Get HR API URLs from database or fallback to config
      */
-    private function getHRApiUrl()
+    private function getHRApiUrls()
     {
-        // Try to get URL from database first
-        $targetUrl = TargetUrl::getUrlByName('hcm_api');
+        // Try to get URLs from database first
+        $targetUrls = TargetUrl::where('name', 'hcm_api')->get();
         
-        if ($targetUrl) {
-            return $targetUrl;
+        if ($targetUrls->isNotEmpty()) {
+            return $targetUrls->pluck('target_url')->toArray();
         }
         
         // Fallback to config if not found in database
-        return config('zkteco.hr_api_url', 'http://hcm.local/api');
+        return [config('zkteco.hr_api_url', 'http://hcm.local/api')];
+    }
+
+    /**
+     * Get single HR API URL (for backward compatibility)
+     */
+    private function getHRApiUrl()
+    {
+        $urls = $this->getHRApiUrls();
+        return $urls[0]; // Return first URL for backward compatibility
     }
 }
