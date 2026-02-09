@@ -30,7 +30,7 @@ fi
 CURRENT_TS=$(date +%s)
 
 # Calculate minutes since last run
-MINUTES_SINCE_LAST_RUN=$(( (CURRENT_TS - LAST_RUN_TS) / 60 ))
+MINUTES_SINCE_LAST_RUN=$(( (CURRENT_TS - LAST_RUN_TS) / 60 )) 
 
 # If it's been more than 20 minutes since last run, run the cron
 if [ $MINUTES_SINCE_LAST_RUN -gt 20 ]; then
